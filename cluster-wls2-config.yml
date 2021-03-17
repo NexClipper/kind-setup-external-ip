@@ -9,3 +9,5 @@ nodes:
   - containerPort: 30000
     hostPort: 30000
     protocol: TCP
+- role: worker
+- role: worker
