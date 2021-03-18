@@ -1,8 +1,20 @@
 #!/bin/bash
+# set -x #echo on
+
 UNAMECHK=`uname`
 KIND_PATH="/usr/local/bin"
 EXTERNAL_IP=""
-KIND_FILE=$(which kind)
+K3D_FILE=$(which k3d)
+
+sp="/-\|"
+sc=0
+spin() {
+  printf "\b${sp:sc++:1}"
+  ((sc==${#sp})) && sc=0
+}
+endspin() {
+  printf "\r%s\n" "$@"
+}
 
 #Host IP Check
 if [[ $EXTERNAL_IP == "" ]]; then
@@ -15,26 +27,30 @@ if [[ $EXTERNAL_IP == "" ]]; then
 	fi
 fi
 
-if [[ -f "$KIND_FILE" ]]; then
-  echo "$KIND_FILE exists."
+# Install K3d
+if [[ -f "$K3D_FILE" ]]; then
+  echo "$K3D_FILE exists."
 else
-  echo "Downloading kind"
-  curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.10.0/kind-$UNAMECHK-amd64"
-  chmod +x ./kind
-  echo "Checking sudo access"
-  sudo mv ./kind $KIND_PATH/kind
+  echo "Downloading & Installing k3d"
+  curl -s https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
 fi
 
-cp cluster-config.yml external_ip.yml
+# Copy Temporary File
+cp k3d.yml external_ip.yml
 
-sed -i 's/127.0.0.1/'$EXTERNAL_IP'/g' external_ip.yml
+# Change API Endpoint
+sed -i 's/\"127.0.0.1\"/\"'$EXTERNAL_IP'\"/g' external_ip.yml
 
-kind create cluster --image=kindest/node:v1.20.2 --config external_ip.yml
+# Create Cluster
+k3d cluster create --config external_ip.yml
 
 rm external_ip.yml
 
-until [[ $(kubectl get pods -A -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\t"}{.status.containerStatuses[*].name}{"\n"}{end}' | grep -v True ) = '' ]]; do sleep 3; done
-
-kubectl cluster-info --context kind-kind
+# Check Cluster Ready
+echo "Starting K3d Cluster"
+until [[ $(kubectl get pods -A -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\t"}{.status.containerStatuses[*].name}{"\n"}{end}' | grep traefik | awk -F " " '{print $1}' ) = 'True' ]]; do 
+  spin
+done
+endspin
 
 echo "All Resources Ready State!"
